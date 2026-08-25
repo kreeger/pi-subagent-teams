@@ -49,6 +49,12 @@ export interface TeamStateEntry {
   snapshot?: TeamSnapshot;
 }
 
+export interface SessionEntry {
+  type?: string;
+  customType?: string;
+  data?: unknown;
+}
+
 export interface TeamInputMatch {
   kind: "none" | "standalone" | "prefix";
   alias?: string;
