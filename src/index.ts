@@ -7,7 +7,10 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { loadTeamsConfig, resolveConfiguredTeam } from "./config.js";
 import { parseTeamInput } from "./input.js";
-import { validateTeamModels } from "./model-validation.js";
+import {
+  normalizeUnsupportedThinking,
+  validateTeamModels,
+} from "./model-validation.js";
 import { buildTeamSystemNote } from "./prompt.js";
 import { appendTeamState, readActiveTeam } from "./session-state.js";
 import type {
@@ -30,25 +33,18 @@ async function defaultLocalProbe(
   provider: string,
   modelId: string,
 ): Promise<void> {
-  const registry = ctx.modelRegistry as typeof ctx.modelRegistry & {
-    getApiKeyAndHeaders?: (
-      model: unknown,
-    ) => Promise<{ ok: boolean; headers?: Record<string, string> }>;
-  };
-  const model = ctx.modelRegistry.find(
-    provider,
-    modelId,
-  ) as typeof ctx.modelRegistry extends never ? never : any;
-  const baseUrl = model?.baseUrl;
+  const model = ctx.modelRegistry.find(provider, modelId);
+  if (!model) throw new Error("local provider model is unavailable");
+  const baseUrl = model.baseUrl;
   if (typeof baseUrl !== "string" || !baseUrl) {
     throw new Error("local provider endpoint is unavailable");
   }
-  const auth = registry.getApiKeyAndHeaders
-    ? await registry.getApiKeyAndHeaders(model)
-    : { ok: true, headers: undefined };
+  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
   if (!auth.ok) throw new Error("local provider authentication unavailable");
+  const headers = { ...auth.headers };
+  if (auth.apiKey) headers.Authorization = `Bearer ${auth.apiKey}`;
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
-    headers: auth.headers,
+    headers,
     signal: AbortSignal.timeout(5000),
   });
   if (!response.ok) throw new Error("local provider probe failed");
@@ -60,16 +56,6 @@ function notify(
   type: "info" | "warning" | "error" = "info",
 ): void {
   if (ctx.hasUI) ctx.ui.notify(message, type);
-}
-
-function diagnostics(snapshot: TeamSnapshot): string[] {
-  return Object.values(snapshot.agents)
-    .filter(
-      (target) =>
-        target.startsWith("external-cli/") ||
-        target.startsWith("external-job/"),
-    )
-    .map((target) => `${target} skipped (external runners remain unchanged).`);
 }
 
 const NORMAL_ALIASES = ["normal", "Use my normal team"];
@@ -129,7 +115,25 @@ export function createTeamExtension(
         return false;
       }
       active = snapshot;
-      lastAdjustments = result.adjustments;
+      const thinking = pi.getThinkingLevel();
+      lastAdjustments = thinking
+        ? Array.from(
+            new Set([snapshot.model, ...Object.values(snapshot.agents)]),
+          )
+            .map((target) => {
+              const separator = target.indexOf("/");
+              const model = ctx.modelRegistry.find(
+                target.slice(0, separator),
+                target.slice(separator + 1),
+              );
+              return model
+                ? normalizeUnsupportedThinking(model, thinking)
+                : undefined;
+            })
+            .filter((adjustment): adjustment is ThinkingAdjustment =>
+              Boolean(adjustment),
+            )
+        : result.adjustments;
       appendTeamState(pi, snapshot);
       showStatus(ctx);
       notify(ctx, `Activated team '${snapshot.name}'.`);
@@ -156,13 +160,21 @@ export function createTeamExtension(
         const target = active
           ? `Active team: ${active.name}. Default model: ${active.model}. Role exceptions: ${JSON.stringify(active.agents)}.`
           : "Active team: normal (pass-through).";
-        const skipped = active ? diagnostics(active).join(" ") : "";
         notify(
           ctx,
           [
             target,
             issues,
-            skipped,
+            "Thinking adjustments: " +
+              (lastAdjustments.length > 0
+                ? lastAdjustments
+                    .map(
+                      (adjustment) =>
+                        `${adjustment.from ?? "configured"} thinking to ${adjustment.to} (${adjustment.reason})`,
+                    )
+                    .join("; ")
+                : "none."),
+            "external-cli and external-job runners remain unchanged and are reported as skipped.",
             "Best-effort only: direct/nested launches can bypass guidance.",
           ]
             .filter(Boolean)
