@@ -1,0 +1,28 @@
+{
+  "name": "@kreeger/pi-subagent-teams",
+  "version": "0.1.0",
+  "description": "Session-scoped model presets for Pi subagent teams",
+  "keywords": ["pi-package", "pi", "subagents", "models", "teams"],
+  "files": ["src", "skills", "README.md", "LICENSE"],
+  "pi": {
+    "extensions": ["./src/index.ts"],
+    "skills": ["./skills"]
+  },
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check ."
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@types/node": "^25.6.0",
+    "prettier": "^3.0.0",
+    "typescript": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}
