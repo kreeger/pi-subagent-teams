@@ -65,7 +65,6 @@ export function parseTeamsConfig(
   const aliases = new Map<string, string>();
 
   for (const [name, value] of Object.entries(raw.teams)) {
-    const normalizedName = normalizeAlias(name);
     const teamIssues: ValidationIssue[] = [];
     if (!SLUG_PATTERN.test(name)) {
       teamIssues.push(
@@ -79,25 +78,6 @@ export function parseTeamsConfig(
       teamIssues.push(
         issue("reserved-team-name", "The team name 'normal' is reserved."),
       );
-    }
-    if (names.has(normalizedName)) {
-      const previousName = names.get(normalizedName) as string;
-      invalidNames.add(previousName);
-      invalidNames.add(name);
-      teamIssues.push(
-        issue(
-          "duplicate-team-name",
-          `Team name '${name}' duplicates '${previousName}'.`,
-        ),
-      );
-      issues.push(
-        issue(
-          "duplicate-team-name",
-          `Team name '${name}' duplicates '${previousName}'.`,
-        ),
-      );
-    } else {
-      names.set(normalizedName, name);
     }
     if (!isRecord(value)) {
       issues.push(issue("invalid-team", `Team '${name}' must be an object.`));
@@ -172,27 +152,6 @@ export function parseTeamsConfig(
         }
       }
     }
-    for (const alias of normalizedAliases) {
-      const previous = aliases.get(alias);
-      if (previous) {
-        invalidNames.add(previous);
-        invalidNames.add(name);
-        teamIssues.push(
-          issue(
-            "duplicate-alias",
-            `Alias '${alias}' is also used by team '${previous}'.`,
-          ),
-        );
-        issues.push(
-          issue(
-            "duplicate-alias",
-            `Alias '${alias}' is also used by team '${name}'.`,
-          ),
-        );
-      } else {
-        aliases.set(alias, name);
-      }
-    }
     if (teamIssues.length > 0) {
       issues.push(...teamIssues);
       continue;
@@ -206,7 +165,40 @@ export function parseTeamsConfig(
     candidates.set(name, snapshot);
   }
 
-  // Remove teams involved in a normalized-name collision or alias collision.
+  // Only valid teams claim names and aliases, so invalid entries cannot poison siblings.
+  for (const [name] of candidates) {
+    const normalizedName = normalizeAlias(name);
+    const previous = names.get(normalizedName);
+    if (previous) {
+      invalidNames.add(previous);
+      invalidNames.add(name);
+      issues.push(
+        issue(
+          "duplicate-team-name",
+          `Team name '${name}' duplicates '${previous}'.`,
+        ),
+      );
+    } else {
+      names.set(normalizedName, name);
+    }
+    const team = candidates.get(name) as TeamSnapshot;
+    for (const alias of team.aliases) {
+      const normalizedAlias = normalizeAlias(alias);
+      const aliasOwner = aliases.get(normalizedAlias);
+      if (aliasOwner) {
+        invalidNames.add(aliasOwner);
+        invalidNames.add(name);
+        issues.push(
+          issue(
+            "duplicate-alias",
+            `Alias '${normalizedAlias}' is also used by team '${name}'.`,
+          ),
+        );
+      } else {
+        aliases.set(normalizedAlias, name);
+      }
+    }
+  }
   for (const name of invalidNames) candidates.delete(name);
   return {
     teams: Object.freeze(Object.fromEntries(candidates)),
@@ -219,12 +211,7 @@ export function resolveConfiguredTeam(
   input: string,
 ): TeamSnapshot | undefined {
   const name = normalizeAlias(input);
-  return (
-    config.teams[name] ??
-    Object.values(config.teams).find(
-      (team) => normalizeAlias(team.name) === name,
-    )
-  );
+  return Object.hasOwn(config.teams, name) ? config.teams[name] : undefined;
 }
 
 export function matchConfiguredAlias(

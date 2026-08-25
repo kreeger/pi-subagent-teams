@@ -94,6 +94,31 @@ describe("parseTeamsConfig", () => {
     expect(matchConfiguredAlias(config, "use this team: task")).toBeUndefined();
   });
 
+  it("does not resolve prototype keys as configured teams", () => {
+    const config = parseTeamsConfig({
+      teams: { team: { aliases: ["team"], model: "provider/model" } },
+    });
+    for (const input of [
+      "constructor",
+      "toString",
+      "__proto__",
+      "hasOwnProperty",
+    ]) {
+      expect(resolveConfiguredTeam(config, input)).toBeUndefined();
+    }
+  });
+
+  it("does not let an invalid team poison a valid sibling alias", () => {
+    const config = parseTeamsConfig({
+      teams: {
+        broken: { aliases: ["shared alias"], model: " " },
+        good: { aliases: ["shared alias"], model: "provider/model" },
+      },
+    });
+    expect(config.teams.broken).toBeUndefined();
+    expect(config.teams.good?.model).toBe("provider/model");
+  });
+
   it("copies snapshots from the input definition", () => {
     const aliases = ["team"];
     const raw = { teams: { team: { aliases, model: "provider/model" } } };
