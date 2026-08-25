@@ -42,15 +42,27 @@ describe("readActiveTeam", () => {
     ).toBeUndefined();
   });
 
-  it("copies a restored snapshot and does not expose credentials", () => {
-    const restored = readActiveTeam([entry({ active: true, snapshot })]);
+  it("filters credential-like fields from restored snapshots", () => {
+    const runtimeSnapshot = {
+      ...snapshot,
+      apiKey: "secret-api-key",
+      providerCredentials: { token: "secret-token" },
+      settings: { temperature: 0.2 },
+      parentState: "not-for-persistence",
+    } as TeamSnapshot;
+
+    const restored = readActiveTeam([
+      entry({
+        active: true,
+        snapshot: runtimeSnapshot,
+        apiKey: "secret-state-key",
+      }),
+    ]);
 
     expect(restored).toEqual(snapshot);
-    expect(restored).not.toBe(snapshot);
-    expect(restored?.aliases).not.toBe(snapshot.aliases);
-    expect(restored?.agents).not.toBe(snapshot.agents);
-    expect(JSON.stringify(restored)).not.toContain("api");
-    expect(JSON.stringify(restored)).not.toContain("credential");
+    expect(restored).not.toBe(runtimeSnapshot);
+    expect(restored?.aliases).not.toBe(runtimeSnapshot.aliases);
+    expect(restored?.agents).not.toBe(runtimeSnapshot.agents);
   });
 
   it("ignores malformed custom entries safely", () => {
@@ -70,10 +82,20 @@ describe("readActiveTeam", () => {
 });
 
 describe("encodeTeamState and appendTeamState", () => {
-  it("encodes active snapshots and reset state without credentials", () => {
-    expect(encodeTeamState(snapshot)).toEqual({ active: true, snapshot });
+  it("encodes only approved snapshot fields and reset state", () => {
+    const runtimeSnapshot = {
+      ...snapshot,
+      apiKey: "secret-api-key",
+      providerCredentials: { token: "secret-token" },
+      settings: { temperature: 0.2 },
+      parentState: "not-for-persistence",
+    } as TeamSnapshot;
+
+    expect(encodeTeamState(runtimeSnapshot)).toEqual({
+      active: true,
+      snapshot,
+    });
     expect(encodeTeamState(undefined)).toEqual({ active: false });
-    expect(JSON.stringify(encodeTeamState(snapshot))).not.toContain("key");
   });
 
   it("copies the snapshot before appending only the state entry", () => {
