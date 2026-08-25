@@ -9,6 +9,13 @@ describe("parseTeamInput", () => {
     });
   });
 
+  it("uses locale-independent case normalization", () => {
+    expect(parseTeamInput("i team", ["I TEAM"])).toEqual({
+      kind: "standalone",
+      alias: "I TEAM",
+    });
+  });
+
   it("strips an anchored alias prefix and preserves the task", () => {
     expect(
       parseTeamInput("Use my local llm team: investigate the failing test", [
@@ -29,6 +36,17 @@ describe("parseTeamInput", () => {
         remainder: "fix it",
       },
     );
+  });
+
+  it("treats colon-only prefixes as standalone activation", () => {
+    expect(parseTeamInput("Use my team:", ["Use my team"])).toEqual({
+      kind: "standalone",
+      alias: "Use my team",
+    });
+    expect(parseTeamInput("Use my team:   ", ["Use my team"])).toEqual({
+      kind: "standalone",
+      alias: "Use my team",
+    });
   });
 
   it("chooses the longest matching alias", () => {

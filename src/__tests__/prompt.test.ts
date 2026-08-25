@@ -38,8 +38,9 @@ describe("buildTeamSystemNote", () => {
     );
     expect(note).toContain("worker: anthropic/claude-sonnet-4");
     expect(note).toContain('subagent({ action: "list" })');
-    expect(note).toContain("model only");
-    expect(note).toContain("preserve role settings");
+    expect(note).toContain(
+      "This guidance changes model only and preserves role settings",
+    );
     expect(note).toContain("thinking to off");
     expect(note).toContain("external-cli/worker is unchanged");
     expect(note).toContain("direct or nested launches can bypass");
@@ -53,7 +54,9 @@ describe("buildDelegationGuidance", () => {
     expect(guidance).toContain('subagent({ action: "list" })');
     expect(guidance).toContain("exact default model");
     expect(guidance).toContain("role exception");
-    expect(guidance).toContain("preserve role settings");
+    expect(guidance).toContain(
+      "This guidance changes model only and preserves role settings",
+    );
     expect(guidance).toContain("thinking");
     expect(guidance).toContain("external-cli and external-job");
     expect(guidance).toContain("direct or nested launches can bypass");

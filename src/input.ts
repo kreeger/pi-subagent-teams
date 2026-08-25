@@ -1,7 +1,7 @@
 import type { TeamInputMatch } from "./types.js";
 
 function normalize(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function escapeRegExp(value: string): string {
@@ -34,11 +34,10 @@ export function parseTeamInput(
   for (const candidate of candidates) {
     const match = prefixPattern(candidate.alias).exec(trimmed);
     if (match) {
-      return {
-        kind: "prefix",
-        alias: candidate.alias,
-        remainder: trimmed.slice(match[0].length).trim(),
-      };
+      const remainder = trimmed.slice(match[0].length).trim();
+      return remainder
+        ? { kind: "prefix", alias: candidate.alias, remainder }
+        : { kind: "standalone", alias: candidate.alias };
     }
   }
 

@@ -7,7 +7,7 @@ import type {
 const BASE_GUIDANCE = [
   'Before each native child launch, call subagent({ action: "list" }) to discover canonical agents.',
   "Apply the matching canonical agent's role exception when one exists; otherwise use the exact default model.",
-  "This is model only; model-only precedence applies. preserve role settings, prompts, tools, and other configuration for each agent.",
+  "This guidance changes model only and preserves role settings, prompts, tools, and other configuration for each agent.",
   "Pass the exact fully qualified target on every native child launch and avoid ad hoc model escapes.",
   "If the target does not support the configured thinking level, use thinking off and report the normalization.",
   "Leave external-cli and external-job runners unchanged; report them as skipped.",
