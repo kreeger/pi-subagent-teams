@@ -16,7 +16,9 @@ export function resolveTeamModel(
   snapshot: TeamSnapshot,
   agentName: string,
 ): string {
-  return snapshot.agents[agentName] ?? snapshot.model;
+  return Object.hasOwn(snapshot.agents, agentName)
+    ? snapshot.agents[agentName]
+    : snapshot.model;
 }
 
 /** Validate every distinct configured target and probe local providers. */

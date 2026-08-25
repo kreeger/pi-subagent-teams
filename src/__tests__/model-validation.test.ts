@@ -82,6 +82,8 @@ describe("resolveTeamModel", () => {
   it("uses a role exception and falls back to the default", () => {
     expect(resolveTeamModel(snapshot, "worker")).toBe(snapshot.agents.worker);
     expect(resolveTeamModel(snapshot, "reviewer")).toBe(snapshot.model);
+    expect(resolveTeamModel(snapshot, "constructor")).toBe(snapshot.model);
+    expect(resolveTeamModel(snapshot, "toString")).toBe(snapshot.model);
   });
 });
 
