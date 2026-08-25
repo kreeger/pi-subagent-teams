@@ -12,7 +12,7 @@
     "teams"
   ],
   "files": [
-    "src",
+    "src/*.ts",
     "skills",
     "README.md",
     "LICENSE"
