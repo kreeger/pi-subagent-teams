@@ -47,12 +47,26 @@ function harness(config: unknown) {
 }
 
 describe("team extension", () => {
-  it("registers command and handles normal reset", async () => {
-    const h = harness({ teams: {} });
-    await createTeamExtension({ agentDir: h.dir })(h.pi);
+  it("registers command and handles normal reset without stale adjustments", async () => {
+    const h = harness({
+      teams: {
+        local: {
+          aliases: ["Use local"],
+          model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8",
+        },
+      },
+    });
+    await createTeamExtension({
+      agentDir: h.dir,
+      probeLocalProvider: vi.fn().mockResolvedValue(undefined),
+    })(h.pi);
     expect(h.commands.has("team")).toBe(true);
+    await h.commands.get("team")!.handler("local", h.ctx);
     await h.commands.get("team")!.handler("normal", h.ctx);
     expect(h.entries.at(-1).data).toEqual({ active: false });
+    await h.commands.get("team")!.handler("", h.ctx);
+    expect(h.notices.at(-1)).toContain("Active team: normal");
+    expect(h.notices.at(-1)).toContain("Thinking adjustments: none.");
   });
 
   it("activates configured teams and preserves state after failed activation", async () => {
@@ -180,6 +194,29 @@ describe("team extension", () => {
     await h.commands.get("team")!.handler("", h.ctx);
     expect(h.notices.at(-1)).toContain("Thinking adjustments");
     expect(h.notices.at(-1)).toContain("external-cli and external-job");
+  });
+
+  it("keeps failed headless alias activation handled and warns safely", async () => {
+    const h = harness({
+      teams: {
+        broken: { aliases: ["Use broken"], model: "missing/model" },
+      },
+    });
+    h.ctx.hasUI = false;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await createTeamExtension({ agentDir: h.dir })(h.pi);
+      const result = await h.handlers.get("input")!(
+        { type: "input", text: "Use broken", source: "interactive" },
+        h.ctx,
+      );
+      expect(result).toEqual({ action: "handled" });
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("not registered"),
+      );
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   it("uses the public registry auth seam for the default local probe", async () => {

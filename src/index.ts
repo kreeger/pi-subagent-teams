@@ -56,6 +56,7 @@ function notify(
   type: "info" | "warning" | "error" = "info",
 ): void {
   if (ctx.hasUI) ctx.ui.notify(message, type);
+  else console.warn(message);
 }
 
 const NORMAL_ALIASES = ["normal", "Use my normal team"];
@@ -86,6 +87,7 @@ export function createTeamExtension(
     ): Promise<boolean> => {
       if (name === "normal" || name.toLowerCase() === "use my normal team") {
         active = undefined;
+        lastAdjustments = [];
         appendTeamState(pi, undefined);
         showStatus(ctx);
         notify(ctx, "Team reset to normal.");
