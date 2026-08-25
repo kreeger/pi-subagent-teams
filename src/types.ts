@@ -60,3 +60,8 @@ export interface TeamInputMatch {
   alias?: string;
   remainder?: string;
 }
+
+export interface TeamExtensionOptions {
+  agentDir?: string;
+  probeLocalProvider?: (provider: string, modelId: string) => Promise<void>;
+}
