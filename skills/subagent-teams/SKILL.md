@@ -16,8 +16,10 @@ Before delegating, call:
 subagent({ action: "list" });
 ```
 
-For every native child launch, pass the exact active `provider/model` target.
-Use a role exception only when the listed agent's name exactly matches the
+For every native child launch, pass the exact active `provider/model` target
+unchanged. For example, pass `localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8` verbatim,
+including every slash. Use a role exception only when the listed agent's name
+exactly matches the
 configured canonical agent name; otherwise use the active team's default model.
 Preserve the selected agent's tools, prompt, context, runner, and all other
 role behavior. This is model routing, not agent-profile replacement.

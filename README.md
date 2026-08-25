@@ -36,8 +36,8 @@ canonical agent name.
 The built-in `normal` team requires no configuration and is Pi's pass-through
 behavior. Use:
 
-- `/team` to show the active snapshot, validation status, warnings, and skipped
-  runners.
+- `/team` to show the active snapshot, configuration diagnostics, validation
+  status, and skipped runners.
 - `/team local-llm` to validate and activate a configured team.
 - `/team normal` to clear the session override.
 - `/skill:subagent-teams` to explicitly load the delegation guidance.
@@ -70,10 +70,11 @@ Missing or malformed configuration fails safe to `normal`. Invalid configured
 teams and unavailable local targets are reported with actionable diagnostics,
 and failed activation does not replace the current active team.
 
-Role keys are checked syntactically. A syntactically valid but unknown role
-name produces a warning; it falls back to the default when no matching
-canonical agent exists. Role settings, prompts, tools, context, outputs, and
-other agent behavior remain unchanged.
+Role keys are checked syntactically. When delegation resolves the canonical
+agent list, an unmatched role falls back to the preset default. Before
+launching, the parent guidance requires `subagent({ action: "list" })` and
+should report when a target cannot be honored. Role settings, prompts, tools,
+context, outputs, and other agent behavior remain unchanged.
 
 If a selected model declares `reasoning: false`, unsupported child thinking is
 normalized to `off` and reported. `external-cli` and `external-job` runners are

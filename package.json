@@ -2,6 +2,8 @@
   "name": "@kreeger/pi-subagent-teams",
   "version": "0.1.0",
   "description": "Session-scoped model presets for Pi subagent teams",
+  "license": "MIT",
+  "author": "Ben Kreeger",
   "keywords": [
     "pi-package",
     "pi",

@@ -13,6 +13,8 @@ describe("package resources", () => {
     const packageJson = readJson("package.json");
     expect(packageJson.pi.extensions).toContain("./src/index.ts");
     expect(packageJson.pi.skills).toContain("./skills");
+    expect(packageJson.license).toBe("MIT");
+    expect(packageJson.author).toBe("Ben Kreeger");
   });
 
   it("provides the subagent-teams skill metadata", () => {
