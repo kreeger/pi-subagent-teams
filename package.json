@@ -2,11 +2,26 @@
   "name": "@kreeger/pi-subagent-teams",
   "version": "0.1.0",
   "description": "Session-scoped model presets for Pi subagent teams",
-  "keywords": ["pi-package", "pi", "subagents", "models", "teams"],
-  "files": ["src", "skills", "README.md", "LICENSE"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "subagents",
+    "models",
+    "teams"
+  ],
+  "files": [
+    "src",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "type": "module",
   "main": "src/index.ts",
