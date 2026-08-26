@@ -3,3 +3,4 @@ node_modules/
 coverage/
 .vitest/
 *.tsbuildinfo
+docs/superpowers
