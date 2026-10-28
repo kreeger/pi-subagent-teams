@@ -16,18 +16,20 @@ Before delegating, call:
 subagent({ action: "list" });
 ```
 
-For every native child launch, pass the exact active `provider/model` target
-unchanged. For example, pass `localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8` verbatim,
+For every native child launch, pass the exact active target unchanged — the
+configured `provider/model`, plus its `:thinking` suffix when the team or the
+matching agent sets one (levels: off, minimal, low, medium, high, xhigh, max).
+For example, pass `localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8` verbatim,
 including every slash. Use a role exception only when the listed agent's name
 exactly matches the
-configured canonical agent name; otherwise use the active team's default model.
+configured canonical agent name; otherwise use the active team's default target.
 Preserve the selected agent's tools, prompt, context, runner, and all other
-role behavior. This is model routing, not agent-profile replacement.
+role behavior. This is model and thinking routing, not agent-profile replacement.
 
-If the active target declares `reasoning: false`, normalize an unsupported
-thinking setting to `off` and report the adjustment. Leave `external-cli` and
-`external-job` runners unchanged and report them as skipped; do not rewrite
-their targets.
+If the active target declares `reasoning: false`, normalize a non-`off`
+configured thinking level to `off` and report the adjustment. Leave
+`external-cli` and `external-job` runners unchanged and report them as skipped;
+do not rewrite their targets.
 
 This guidance is best effort. Direct or nested `subagent` launches can bypass
 it, so do not claim that every child is enforced by the active team.

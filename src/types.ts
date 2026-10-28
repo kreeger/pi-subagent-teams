@@ -1,7 +1,32 @@
+export const THINKING_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
+export function isThinkingLevel(value: unknown): value is ThinkingLevel {
+  return (
+    typeof value === "string" &&
+    (THINKING_LEVELS as readonly string[]).includes(value)
+  );
+}
+
+export interface AgentTarget {
+  model: string;
+  thinking?: ThinkingLevel;
+}
+
 export interface TeamDefinition {
   aliases: string[];
   model: string;
-  agents?: Record<string, string>;
+  thinking?: string;
+  agents?: Record<string, string | AgentTarget>;
 }
 
 export interface TeamsFile {
@@ -12,7 +37,8 @@ export interface TeamSnapshot {
   name: string;
   aliases: readonly string[];
   model: string;
-  agents: Readonly<Record<string, string>>;
+  thinking?: ThinkingLevel;
+  agents: Readonly<Record<string, AgentTarget>>;
 }
 
 export interface ValidationIssue {

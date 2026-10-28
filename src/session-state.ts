@@ -1,5 +1,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { SessionEntry, TeamSnapshot, TeamStateEntry } from "./types.js";
+import type {
+  AgentTarget,
+  SessionEntry,
+  TeamSnapshot,
+  TeamStateEntry,
+} from "./types.js";
+import { isThinkingLevel } from "./types.js";
 
 export const TEAM_STATE_ENTRY = "subagent-team-state";
 
@@ -9,6 +15,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function decodeAgentTarget(value: unknown): AgentTarget | undefined {
+  if (!isRecord(value) || typeof value.model !== "string") return undefined;
+  if (value.thinking === undefined) return { model: value.model };
+  if (!isThinkingLevel(value.thinking)) return undefined;
+  return { model: value.model, thinking: value.thinking };
+}
+
 function decodeSnapshot(value: unknown): TeamSnapshot | undefined {
   if (!isRecord(value)) return undefined;
   if (
@@ -16,9 +29,17 @@ function decodeSnapshot(value: unknown): TeamSnapshot | undefined {
     !Array.isArray(value.aliases) ||
     !value.aliases.every((alias) => typeof alias === "string") ||
     typeof value.model !== "string" ||
-    !isRecord(value.agents) ||
-    !Object.values(value.agents).every((model) => typeof model === "string")
+    !isRecord(value.agents)
   ) {
+    return undefined;
+  }
+  const agents: Record<string, AgentTarget> = {};
+  for (const [role, target] of Object.entries(value.agents)) {
+    const decoded = decodeAgentTarget(target);
+    if (!decoded) return undefined;
+    agents[role] = decoded;
+  }
+  if (value.thinking !== undefined && !isThinkingLevel(value.thinking)) {
     return undefined;
   }
 
@@ -26,7 +47,10 @@ function decodeSnapshot(value: unknown): TeamSnapshot | undefined {
     name: value.name,
     aliases: [...value.aliases],
     model: value.model,
-    agents: { ...value.agents } as Record<string, string>,
+    agents,
+    ...(value.thinking !== undefined
+      ? { thinking: value.thinking as TeamSnapshot["thinking"] }
+      : {}),
   };
 }
 

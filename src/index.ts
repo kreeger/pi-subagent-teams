@@ -11,7 +11,7 @@ import {
   normalizeUnsupportedThinking,
   validateTeamModels,
 } from "./model-validation.js";
-import { buildTeamSystemNote } from "./prompt.js";
+import { buildTeamSystemNote, composeTarget } from "./prompt.js";
 import { appendTeamState, readActiveTeam } from "./session-state.js";
 import type {
   RegisteredModel,
@@ -41,7 +41,10 @@ async function defaultLocalProbe(
   }
   const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
   if (!auth.ok) throw new Error("local provider authentication unavailable");
-  const headers = { ...auth.headers };
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(auth.headers ?? {})) {
+    if (typeof value === "string") headers[key] = value;
+  }
   if (auth.apiKey) headers.Authorization = `Bearer ${auth.apiKey}`;
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
     headers,
@@ -117,25 +120,34 @@ export function createTeamExtension(
         return false;
       }
       active = snapshot;
-      const thinking = pi.getThinkingLevel();
-      lastAdjustments = thinking
-        ? Array.from(
-            new Set([snapshot.model, ...Object.values(snapshot.agents)]),
-          )
-            .map((target) => {
-              const separator = target.indexOf("/");
-              const model = ctx.modelRegistry.find(
-                target.slice(0, separator),
-                target.slice(separator + 1),
-              );
-              return model
-                ? normalizeUnsupportedThinking(model, thinking)
-                : undefined;
-            })
-            .filter((adjustment): adjustment is ThinkingAdjustment =>
-              Boolean(adjustment),
-            )
-        : result.adjustments;
+      const adjustments = [...result.adjustments];
+      const parentThinking = pi.getThinkingLevel();
+      if (!snapshot.thinking && parentThinking) {
+        const configuredModels = new Set(
+          Object.values(snapshot.agents)
+            .filter((target) => target.thinking)
+            .map((target) => target.model),
+        );
+        const fallbackTargets = new Set([
+          snapshot.model,
+          ...Object.values(snapshot.agents)
+            .filter((target) => !target.thinking)
+            .map((target) => target.model),
+        ]);
+        for (const target of fallbackTargets) {
+          if (configuredModels.has(target)) continue;
+          const separator = target.indexOf("/");
+          const model = ctx.modelRegistry.find(
+            target.slice(0, separator),
+            target.slice(separator + 1),
+          );
+          const adjustment = model
+            ? normalizeUnsupportedThinking(model, parentThinking)
+            : undefined;
+          if (adjustment) adjustments.push(adjustment);
+        }
+      }
+      lastAdjustments = adjustments;
       appendTeamState(pi, snapshot);
       showStatus(ctx);
       notify(ctx, `Activated team '${snapshot.name}'.`);
@@ -159,8 +171,22 @@ export function createTeamExtension(
           return;
         }
         const issues = config.issues.map((issue) => issue.message).join(" ");
-        const target = active
-          ? `Active team: ${active.name}. Default model: ${active.model}. Role exceptions: ${JSON.stringify(active.agents)}.`
+        const current = active;
+        const target = current
+          ? `Active team: ${current.name}. Default model: ${composeTarget({
+              model: current.model,
+              thinking: current.thinking,
+            })}. Role exceptions: ${
+              Object.entries(current.agents)
+                .map(
+                  ([role, roleTarget]) =>
+                    `${role}: ${composeTarget({
+                      model: roleTarget.model,
+                      thinking: roleTarget.thinking ?? current.thinking,
+                    })}`,
+                )
+                .join(", ") || "none"
+            }.`
           : "Active team: normal (pass-through).";
         notify(
           ctx,

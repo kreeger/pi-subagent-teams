@@ -196,6 +196,42 @@ describe("team extension", () => {
     expect(h.notices.at(-1)).toContain("external-cli and external-job");
   });
 
+  it("applies configured thinking levels and reports normalization", async () => {
+    const h = harness({
+      teams: {
+        local: {
+          aliases: ["Use local"],
+          model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8",
+          thinking: "low",
+          agents: {
+            worker: {
+              model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8",
+              thinking: "high",
+            },
+          },
+        },
+      },
+    });
+    await createTeamExtension({
+      agentDir: h.dir,
+      probeLocalProvider: vi.fn().mockResolvedValue(undefined),
+    })(h.pi);
+    await h.commands.get("team")!.handler("local", h.ctx);
+    const note = await h.handlers.get("before_agent_start")!(
+      { systemPrompt: "base" },
+      h.ctx,
+    );
+    expect(note.systemPrompt).toContain(
+      "worker: localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8:high",
+    );
+    expect(note.systemPrompt).toContain("low thinking to off");
+    expect(note.systemPrompt).toContain("high thinking to off");
+    await h.commands.get("team")!.handler("", h.ctx);
+    expect(h.notices.at(-1)).toContain(
+      "worker: localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8:high",
+    );
+  });
+
   it("keeps failed headless alias activation handled and warns safely", async () => {
     const h = harness({
       teams: {

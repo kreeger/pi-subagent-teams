@@ -82,6 +82,77 @@ describe("parseTeamsConfig", () => {
     );
   });
 
+  it("parses shorthand and object agent targets with thinking", () => {
+    const result = parseTeamsConfig({
+      teams: {
+        team: {
+          aliases: ["team"],
+          model: "provider/model",
+          thinking: "low",
+          agents: {
+            planner: "anthropic/claude-sonnet-4:high",
+            worker: { model: "provider/model", thinking: "off" },
+            reviewer: "openai/gpt-4o",
+          },
+        },
+      },
+    });
+    expect(result.issues).toEqual([]);
+    expect(result.teams.team?.thinking).toBe("low");
+    expect(result.teams.team?.agents).toEqual({
+      planner: { model: "anthropic/claude-sonnet-4", thinking: "high" },
+      worker: { model: "provider/model", thinking: "off" },
+      reviewer: { model: "openai/gpt-4o" },
+    });
+  });
+
+  it("keeps a non-thinking suffix as part of the model target", () => {
+    const result = parseTeamsConfig({
+      teams: {
+        team: {
+          aliases: ["team"],
+          model: "localllm-orm/llama3:8b",
+          agents: { worker: "localllm-orm/qwen2.5-coder:32b" },
+        },
+      },
+    });
+    expect(result.issues).toEqual([]);
+    expect(result.teams.team?.model).toBe("localllm-orm/llama3:8b");
+    expect(result.teams.team?.agents.worker).toEqual({
+      model: "localllm-orm/qwen2.5-coder:32b",
+    });
+  });
+
+  it("rejects invalid thinking levels on teams and agent objects", () => {
+    const result = parseTeamsConfig({
+      teams: {
+        "bad-team": {
+          aliases: ["bt"],
+          model: "provider/model",
+          thinking: "ultra",
+        },
+        "bad-agent": {
+          aliases: ["ba"],
+          model: "provider/model",
+          agents: { worker: { model: "provider/model", thinking: 3 } },
+        },
+        "missing-agent-model": {
+          aliases: ["mam"],
+          model: "provider/model",
+          agents: { worker: { thinking: "high" } },
+        },
+      },
+    });
+    expect(result.teams).toEqual({});
+    expect(result.issues.map((entry) => entry.code)).toEqual(
+      expect.arrayContaining([
+        "invalid-thinking",
+        "invalid-thinking",
+        "invalid-role-model",
+      ]),
+    );
+  });
+
   it("normalizes and matches exact names and aliases only", () => {
     const config = parseTeamsConfig({
       teams: {

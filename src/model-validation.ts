@@ -1,4 +1,5 @@
 import type {
+  AgentTarget,
   RegisteredModel,
   TeamSnapshot,
   ThinkingAdjustment,
@@ -15,10 +16,35 @@ export interface ModelValidationContext {
 export function resolveTeamModel(
   snapshot: TeamSnapshot,
   agentName: string,
-): string {
+): AgentTarget {
   return Object.hasOwn(snapshot.agents, agentName)
     ? snapshot.agents[agentName]
-    : snapshot.model;
+    : {
+        model: snapshot.model,
+        ...(snapshot.thinking ? { thinking: snapshot.thinking } : {}),
+      };
+}
+
+/** Every distinct (model, effective thinking) pair, team default thinking applied. */
+function collectTargets(
+  snapshot: TeamSnapshot,
+): readonly { model: string; thinking?: string }[] {
+  const seen = new Set<string>();
+  const targets: { model: string; thinking?: string }[] = [];
+  const candidates = [
+    { model: snapshot.model, thinking: snapshot.thinking },
+    ...Object.values(snapshot.agents).map((target) => ({
+      model: target.model,
+      thinking: target.thinking ?? snapshot.thinking,
+    })),
+  ];
+  for (const candidate of candidates) {
+    const key = `${candidate.model}\u0000${candidate.thinking ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push(candidate);
+  }
+  return targets;
 }
 
 /** Validate every distinct configured target and probe local providers. */
@@ -27,20 +53,20 @@ export async function validateTeamModels(
   context: ModelValidationContext,
 ): Promise<ValidationResult> {
   const issues: ValidationIssue[] = [];
-  const targets = new Set([snapshot.model, ...Object.values(snapshot.agents)]);
+  const adjustments: ThinkingAdjustment[] = [];
 
-  for (const target of targets) {
-    const separator = target.indexOf("/");
-    if (separator <= 0 || separator === target.length - 1) {
+  for (const target of collectTargets(snapshot)) {
+    const separator = target.model.indexOf("/");
+    if (separator <= 0 || separator === target.model.length - 1) {
       issues.push({
         severity: "error",
         code: "invalid-model-target",
-        message: `Model target '${target}' must use provider/model syntax.`,
+        message: `Model target '${target.model}' must use provider/model syntax.`,
       });
       continue;
     }
-    const provider = target.slice(0, separator);
-    const modelId = target.slice(separator + 1);
+    const provider = target.model.slice(0, separator);
+    const modelId = target.model.slice(separator + 1);
     const registered = context.models.find(
       (model) => model.provider === provider && model.id === modelId,
     );
@@ -48,7 +74,7 @@ export async function validateTeamModels(
       issues.push({
         severity: "error",
         code: "model-not-found",
-        message: `Model '${target}' is not registered.`,
+        message: `Model '${target.model}' is not registered.`,
       });
       continue;
     }
@@ -60,16 +86,27 @@ export async function validateTeamModels(
         issues.push({
           severity: "error",
           code: "local-probe-failed",
-          message: `Could not reach local provider model '${target}'.`,
+          message: `Could not reach local provider model '${target.model}'.`,
         });
       }
+    }
+    if (
+      registered.reasoning === false &&
+      target.thinking !== undefined &&
+      target.thinking !== "off"
+    ) {
+      adjustments.push({
+        from: target.thinking,
+        to: "off",
+        reason: `Model '${target.model}' does not support reasoning.`,
+      });
     }
   }
 
   return {
     ok: issues.every((issue) => issue.severity !== "error"),
     issues,
-    adjustments: [],
+    adjustments,
   };
 }
 

@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {
+  AgentTarget,
   LoadedTeamsConfig,
   TeamDefinition,
   TeamSnapshot,
   TeamsFile,
+  ThinkingLevel,
   ValidationIssue,
 } from "./types.js";
+import { isThinkingLevel, THINKING_LEVELS } from "./types.js";
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -123,14 +126,14 @@ export function parseTeamsConfig(
         }
       }
     }
-    const agents: Record<string, string> = {};
+    const agents: Record<string, AgentTarget> = {};
     if (value.agents !== undefined) {
       if (!isRecord(value.agents)) {
         teamIssues.push(
           issue("invalid-agents", `Team '${name}' agents must be an object.`),
         );
       } else {
-        for (const [role, target] of Object.entries(value.agents)) {
+        for (const [role, raw] of Object.entries(value.agents)) {
           if (!SLUG_PATTERN.test(role)) {
             teamIssues.push(
               issue(
@@ -139,17 +142,22 @@ export function parseTeamsConfig(
               ),
             );
           }
-          if (typeof target !== "string" || target.trim() === "") {
-            teamIssues.push(
-              issue(
-                "invalid-role-model",
-                `Team '${name}' role '${role}' must have a non-empty model.`,
-              ),
-            );
-          } else {
-            agents[role] = target.trim();
-          }
+          const target = parseAgentTarget(name, role, raw, teamIssues);
+          if (target) agents[role] = target;
         }
+      }
+    }
+    let thinking: ThinkingLevel | undefined;
+    if (value.thinking !== undefined) {
+      if (!isThinkingLevel(value.thinking)) {
+        teamIssues.push(
+          issue(
+            "invalid-thinking",
+            `Team '${name}' thinking must be one of: ${THINKING_LEVELS.join(", ")}.`,
+          ),
+        );
+      } else {
+        thinking = value.thinking;
       }
     }
     if (teamIssues.length > 0) {
@@ -160,7 +168,15 @@ export function parseTeamsConfig(
       name,
       aliases: Object.freeze([...(aliasesValue as string[])]),
       model: (model as string).trim(),
-      agents: Object.freeze({ ...agents }),
+      agents: Object.freeze(
+        Object.fromEntries(
+          Object.entries(agents).map(([role, target]) => [
+            role,
+            Object.freeze(target),
+          ]),
+        ),
+      ),
+      ...(thinking !== undefined ? { thinking } : {}),
     });
     candidates.set(name, snapshot);
   }
@@ -235,6 +251,73 @@ function isMissingFile(error: unknown): boolean {
 }
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Split a trailing `:level` suffix off a target only when it is a valid thinking level. */
+export function splitThinkingSuffix(target: string): {
+  model: string;
+  thinking?: ThinkingLevel;
+} {
+  const separator = target.lastIndexOf(":");
+  if (separator > 0 && separator < target.length - 1) {
+    const suffix = target.slice(separator + 1);
+    if (isThinkingLevel(suffix)) {
+      return { model: target.slice(0, separator), thinking: suffix };
+    }
+  }
+  return { model: target };
+}
+
+function parseAgentTarget(
+  teamName: string,
+  role: string,
+  raw: unknown,
+  teamIssues: ValidationIssue[],
+): AgentTarget | undefined {
+  if (typeof raw === "string") {
+    if (raw.trim() === "") {
+      teamIssues.push(
+        issue(
+          "invalid-role-model",
+          `Team '${teamName}' role '${role}' must have a non-empty model.`,
+        ),
+      );
+      return undefined;
+    }
+    return splitThinkingSuffix(raw.trim());
+  }
+  if (isRecord(raw)) {
+    const model = raw.model;
+    if (typeof model !== "string" || model.trim() === "") {
+      teamIssues.push(
+        issue(
+          "invalid-role-model",
+          `Team '${teamName}' role '${role}' must have a non-empty model.`,
+        ),
+      );
+      return undefined;
+    }
+    if (raw.thinking !== undefined && !isThinkingLevel(raw.thinking)) {
+      teamIssues.push(
+        issue(
+          "invalid-thinking",
+          `Team '${teamName}' role '${role}' has a thinking level that must be one of: ${THINKING_LEVELS.join(", ")}.`,
+        ),
+      );
+      return undefined;
+    }
+    return {
+      model: model.trim(),
+      ...(raw.thinking !== undefined ? { thinking: raw.thinking } : {}),
+    };
+  }
+  teamIssues.push(
+    issue(
+      "invalid-role-model",
+      `Team '${teamName}' role '${role}' must be a model string or an object with a model.`,
+    ),
+  );
+  return undefined;
 }
 
 export type { LoadedTeamsConfig, TeamDefinition, TeamsFile };

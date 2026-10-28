@@ -11,7 +11,10 @@ const snapshot: TeamSnapshot = {
   name: "local-llm",
   aliases: ["local"],
   model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8",
-  agents: { worker: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8" },
+  agents: {
+    worker: { model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8" },
+    reviewer: { model: "openai/gpt-4o", thinking: "high" },
+  },
 };
 
 function context(
@@ -22,16 +25,22 @@ function context(
 
 describe("validateTeamModels", () => {
   it("requires the exact fully qualified local model ID", async () => {
-    const result = await validateTeamModels(snapshot, {
-      models: [
-        {
-          provider: "localllm-orm",
-          id: "Qwen/Qwen3.6-35B-A3B-FP8",
-          reasoning: false,
-        },
-      ],
-      probeLocalProvider: vi.fn().mockResolvedValue(undefined),
-    });
+    const result = await validateTeamModels(
+      {
+        ...snapshot,
+        agents: { worker: { model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8" } },
+      },
+      {
+        models: [
+          {
+            provider: "localllm-orm",
+            id: "Qwen/Qwen3.6-35B-A3B-FP8",
+            reasoning: false,
+          },
+        ],
+        probeLocalProvider: vi.fn().mockResolvedValue(undefined),
+      },
+    );
 
     expect(result.ok).toBe(true);
   });
@@ -65,7 +74,10 @@ describe("validateTeamModels", () => {
       {
         ...snapshot,
         model: "openai/gpt-4o",
-        agents: { worker: "openai/gpt-4o" },
+        agents: {
+          worker: { model: "openai/gpt-4o" },
+          reviewer: { model: "openai/gpt-4o", thinking: "high" },
+        },
       },
       {
         models: [{ provider: "openai", id: "gpt-4o" }],
@@ -76,14 +88,93 @@ describe("validateTeamModels", () => {
     expect(result.ok).toBe(true);
     expect(probeLocalProvider).not.toHaveBeenCalled();
   });
+
+  it("normalizes configured thinking for models without reasoning", async () => {
+    const result = await validateTeamModels(
+      {
+        ...snapshot,
+        agents: { worker: { model: "openai/gpt-4o", thinking: "high" } },
+      },
+      context([
+        { provider: "openai", id: "gpt-4o", reasoning: false },
+        { provider: "localllm-orm", id: "Qwen/Qwen3.6-35B-A3B-FP8" },
+      ]),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.adjustments).toEqual([
+      {
+        from: "high",
+        to: "off",
+        reason: "Model 'openai/gpt-4o' does not support reasoning.",
+      },
+    ]);
+  });
+
+  it("applies the team default thinking to agents without their own", async () => {
+    const result = await validateTeamModels(
+      {
+        ...snapshot,
+        thinking: "high",
+        agents: {
+          worker: { model: "openai/gpt-4o" },
+          reviewer: { model: "openai/gpt-4o", thinking: "low" },
+        },
+      },
+      context([
+        { provider: "openai", id: "gpt-4o", reasoning: false },
+        { provider: "localllm-orm", id: "Qwen/Qwen3.6-35B-A3B-FP8" },
+      ]),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.adjustments).toEqual([
+      {
+        from: "high",
+        to: "off",
+        reason: "Model 'openai/gpt-4o' does not support reasoning.",
+      },
+      {
+        from: "low",
+        to: "off",
+        reason: "Model 'openai/gpt-4o' does not support reasoning.",
+      },
+    ]);
+  });
+
+  it("keeps configured thinking for reasoning-capable models", async () => {
+    const result = await validateTeamModels(
+      {
+        ...snapshot,
+        agents: { worker: { model: "openai/gpt-4o", thinking: "high" } },
+      },
+      context([
+        { provider: "openai", id: "gpt-4o", reasoning: true },
+        { provider: "localllm-orm", id: "Qwen/Qwen3.6-35B-A3B-FP8" },
+      ]),
+    );
+
+    expect(result.adjustments).toEqual([]);
+  });
 });
 
 describe("resolveTeamModel", () => {
   it("uses a role exception and falls back to the default", () => {
-    expect(resolveTeamModel(snapshot, "worker")).toBe(snapshot.agents.worker);
-    expect(resolveTeamModel(snapshot, "reviewer")).toBe(snapshot.model);
-    expect(resolveTeamModel(snapshot, "constructor")).toBe(snapshot.model);
-    expect(resolveTeamModel(snapshot, "toString")).toBe(snapshot.model);
+    expect(resolveTeamModel(snapshot, "worker")).toEqual(
+      snapshot.agents.worker,
+    );
+    expect(resolveTeamModel(snapshot, "reviewer")).toEqual(
+      snapshot.agents.reviewer,
+    );
+    expect(resolveTeamModel(snapshot, "planner")).toEqual({
+      model: snapshot.model,
+    });
+    expect(resolveTeamModel(snapshot, "constructor")).toEqual({
+      model: snapshot.model,
+    });
+    expect(resolveTeamModel(snapshot, "toString")).toEqual({
+      model: snapshot.model,
+    });
   });
 });
 

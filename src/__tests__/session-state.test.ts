@@ -11,7 +11,10 @@ const snapshot: TeamSnapshot = {
   name: "local-llm",
   aliases: ["Use my local llm team"],
   model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8",
-  agents: { worker: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8" },
+  agents: {
+    worker: { model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8" },
+    reviewer: { model: "openai/gpt-4o", thinking: "high" },
+  },
 };
 
 const entry = (data: unknown) => ({
@@ -71,6 +74,13 @@ describe("readActiveTeam", () => {
         entry({ active: true }),
         entry({ active: true, snapshot: { name: "missing-agents" } }),
         entry({ active: true, snapshot: { ...snapshot, agents: undefined } }),
+        entry({
+          active: true,
+          snapshot: {
+            ...snapshot,
+            agents: { worker: { model: "openai/gpt-4o", thinking: 3 } },
+          },
+        }),
         entry({ active: "yes", snapshot }),
         entry({ active: true, snapshot }),
       ]),
@@ -78,6 +88,21 @@ describe("readActiveTeam", () => {
 
     expect(() => readActiveTeam([entry({ active: true })])).not.toThrow();
     expect(readActiveTeam([{ type: "message", data: {} }])).toBeUndefined();
+  });
+
+  it("decodes agent thinking levels and drops unknown thinking values", () => {
+    const withThinking = {
+      ...snapshot,
+      thinking: "medium" as const,
+    };
+    expect(
+      readActiveTeam([entry({ active: true, snapshot: withThinking })]),
+    ).toEqual(withThinking);
+
+    const invalidTeamThinking = { ...withThinking, thinking: "ultra" };
+    expect(
+      readActiveTeam([entry({ active: true, snapshot: invalidTeamThinking })]),
+    ).toBeUndefined();
   });
 });
 
