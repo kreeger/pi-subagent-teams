@@ -5,12 +5,14 @@ import type {
   InputEvent,
   SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { loadTeamsConfig, resolveConfiguredTeam } from "./config.js";
 import { parseTeamInput } from "./input.js";
 import {
   normalizeUnsupportedThinking,
   validateTeamModels,
 } from "./model-validation.js";
+import { readPersistedTeam, writePersistedTeam } from "./persisted-state.js";
 import { buildTeamSystemNote, composeTarget } from "./prompt.js";
 import { appendTeamState, readActiveTeam } from "./session-state.js";
 import type {
@@ -68,9 +70,22 @@ export function createTeamExtension(
   options: TeamExtensionOptions = {},
 ): ExtensionFactory {
   return (pi) => {
+    const stateDir = options.agentDir ?? getAgentDir();
     let config = loadTeamsConfig(options.agentDir);
     let active: TeamSnapshot | undefined;
     let lastAdjustments: readonly ThinkingAdjustment[] = [];
+
+    const persist = (team: string | undefined, ctx: ExtensionContext): void => {
+      try {
+        writePersistedTeam(stateDir, team);
+      } catch {
+        notify(
+          ctx,
+          "Could not save the subagent-team default; the team stays active for this session only.",
+          "warning",
+        );
+      }
+    };
 
     const aliases = (): string[] => [
       ...NORMAL_ALIASES,
@@ -92,6 +107,7 @@ export function createTeamExtension(
         active = undefined;
         lastAdjustments = [];
         appendTeamState(pi, undefined);
+        persist(undefined, ctx);
         showStatus(ctx);
         notify(ctx, "Team reset to normal.");
         return true;
@@ -149,6 +165,7 @@ export function createTeamExtension(
       }
       lastAdjustments = adjustments;
       appendTeamState(pi, snapshot);
+      persist(snapshot.name, ctx);
       showStatus(ctx);
       notify(ctx, `Activated team '${snapshot.name}'.`);
       return true;
@@ -202,6 +219,7 @@ export function createTeamExtension(
                     )
                     .join("; ")
                 : "none."),
+            `Saved default: ${readPersistedTeam(stateDir) ?? "none"}.`,
             "external-cli and external-job runners remain unchanged and are reported as skipped.",
             "Best-effort only: direct/nested launches can bypass guidance.",
           ]
@@ -211,11 +229,46 @@ export function createTeamExtension(
       },
     });
 
-    pi.on("session_start", (event: SessionStartEvent, ctx) => {
+    pi.on("session_start", async (event: SessionStartEvent, ctx) => {
       config = loadTeamsConfig(options.agentDir);
       active = readActiveTeam(ctx.sessionManager.getEntries() as any);
       lastAdjustments = [];
       showStatus(ctx);
+      if (active) return;
+      const saved = readPersistedTeam(stateDir);
+      if (!saved) return;
+      const snapshot = resolveConfiguredTeam(config, saved);
+      if (!snapshot) {
+        persist(undefined, ctx);
+        notify(
+          ctx,
+          `Saved subagent-team default '${saved}' is no longer configured; reset to normal.`,
+          "warning",
+        );
+        return;
+      }
+      const result = await validateTeamModels(snapshot, {
+        models: modelRegistryModels(ctx),
+        probeLocalProvider:
+          options.probeLocalProvider ??
+          ((provider, modelId) => defaultLocalProbe(ctx, provider, modelId)),
+      });
+      if (!result.ok) {
+        persist(undefined, ctx);
+        notify(
+          ctx,
+          `Saved subagent-team default '${saved}' no longer validates (${result.issues
+            .map((issue) => issue.message)
+            .join(" ")}); reset to normal.`,
+          "warning",
+        );
+        return;
+      }
+      active = snapshot;
+      lastAdjustments = [...result.adjustments];
+      appendTeamState(pi, snapshot);
+      showStatus(ctx);
+      notify(ctx, `Restored team '${snapshot.name}'.`);
     });
 
     pi.on("input", async (event: InputEvent, ctx) => {

@@ -8,7 +8,11 @@ description: Use team and model preset delegation for Pi subagents.
 Use the active team selected by `/team <name>`, `/team normal`, or a configured
 exact alias (for example, `Use my local llm team`). The built-in `normal` team
 preserves Pi's normal behavior. A configured alias may also prefix a task with
-`:` or a newline; remove that prefix before handling the task.
+`:` or a newline; remove that prefix before handling the task. The last
+activated team is also the saved default: new sessions restore it after
+re-validation, and `/team normal` clears both the session override and the
+saved default. If the saved default fails validation at session start, treat
+the session as `normal` and surface the warning.
 
 Before delegating, call:
 

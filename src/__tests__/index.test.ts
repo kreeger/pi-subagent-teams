@@ -1,8 +1,9 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import extension, { createTeamExtension } from "../index.js";
+import { STATE_FILE } from "../persisted-state.js";
 
 function harness(config: unknown) {
   const dir = mkdtempSync(join(tmpdir(), "teams-index-"));
@@ -230,6 +231,121 @@ describe("team extension", () => {
     expect(h.notices.at(-1)).toContain(
       "worker: localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8:high",
     );
+  });
+
+  it("persists the activated team and clears it on normal", async () => {
+    const h = harness({
+      teams: {
+        local: {
+          aliases: ["Use local"],
+          model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8",
+        },
+      },
+    });
+    await createTeamExtension({
+      agentDir: h.dir,
+      probeLocalProvider: vi.fn().mockResolvedValue(undefined),
+    })(h.pi);
+    await h.commands.get("team")!.handler("local", h.ctx);
+    expect(JSON.parse(readFileSync(join(h.dir, STATE_FILE), "utf8"))).toEqual({
+      team: "local",
+    });
+    await h.commands.get("team")!.handler("normal", h.ctx);
+    expect(JSON.parse(readFileSync(join(h.dir, STATE_FILE), "utf8"))).toEqual({
+      team: null,
+    });
+  });
+
+  it("restores the persisted team on session start", async () => {
+    const h = harness({
+      teams: {
+        local: {
+          aliases: ["Use local"],
+          model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8",
+        },
+      },
+    });
+    writeFileSync(join(h.dir, STATE_FILE), JSON.stringify({ team: "local" }));
+    await createTeamExtension({
+      agentDir: h.dir,
+      probeLocalProvider: vi.fn().mockResolvedValue(undefined),
+    })(h.pi);
+    await h.handlers.get("session_start")!(
+      { type: "session_start", reason: "start" },
+      h.ctx,
+    );
+    const note = await h.handlers.get("before_agent_start")!(
+      { systemPrompt: "base" },
+      h.ctx,
+    );
+    expect(note.systemPrompt).toContain("active team: local");
+    expect(JSON.parse(readFileSync(join(h.dir, STATE_FILE), "utf8"))).toEqual({
+      team: "local",
+    });
+  });
+
+  it("fails safe when the persisted team no longer validates", async () => {
+    const h = harness({
+      teams: {
+        broken: { aliases: ["Use broken"], model: "missing/model" },
+      },
+    });
+    writeFileSync(join(h.dir, STATE_FILE), JSON.stringify({ team: "broken" }));
+    await createTeamExtension({
+      agentDir: h.dir,
+      probeLocalProvider: vi.fn().mockResolvedValue(undefined),
+    })(h.pi);
+    await h.handlers.get("session_start")!(
+      { type: "session_start", reason: "start" },
+      h.ctx,
+    );
+    expect(h.notices.join(" ")).toContain("no longer validates");
+    expect(JSON.parse(readFileSync(join(h.dir, STATE_FILE), "utf8"))).toEqual({
+      team: null,
+    });
+    const after = await h.handlers.get("before_agent_start")!(
+      { systemPrompt: "base" },
+      h.ctx,
+    );
+    expect(after).toBeUndefined();
+  });
+
+  it("prefers the session snapshot over the persisted default and leaves it untouched", async () => {
+    const h = harness({
+      teams: {
+        local: {
+          aliases: ["Use local"],
+          model: "localllm-orm/Qwen/Qwen3.6-35B-A3B-FP8",
+        },
+      },
+    });
+    writeFileSync(join(h.dir, STATE_FILE), JSON.stringify({ team: "local" }));
+    h.entries.push({
+      type: "custom",
+      customType: "subagent-team-state",
+      data: {
+        active: true,
+        snapshot: {
+          name: "saved",
+          aliases: [],
+          model: "provider/model",
+          agents: {},
+        },
+      },
+    });
+    await createTeamExtension({ agentDir: h.dir })(h.pi);
+    await h.handlers.get("session_start")!(
+      { type: "session_start", reason: "resume" },
+      h.ctx,
+    );
+    const note = await h.handlers.get("before_agent_start")!(
+      { systemPrompt: "base" },
+      h.ctx,
+    );
+    expect(note.systemPrompt).toContain("active team: saved");
+    expect(JSON.parse(readFileSync(join(h.dir, STATE_FILE), "utf8"))).toEqual({
+      team: "local",
+    });
   });
 
   it("keeps failed headless alias activation handled and warns safely", async () => {

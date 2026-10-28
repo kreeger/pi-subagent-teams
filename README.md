@@ -83,13 +83,20 @@ sentence does not activate a team.
 
 ## Lifetime and validation
 
-An activated preset lasts until the Pi session ends. Pi snapshots the validated
+An activated preset lasts until the Pi session ends, and the last activated
+team also becomes the saved default: every new session restores it after
+re-validating it against the current configuration and model registry.
+`/team normal` clears both the session override and the saved default. If the
+saved default no longer resolves or fails validation at session start, it is
+cleared and the session starts on `normal` with a warning. Pi snapshots the
+validated
 team definition when you select it, so later edits to `teams.json` take effect
-only after you select the team again.
+only after you select the team again. The saved default stores the team name
+only — never credentials or model credentials.
 
 The snapshot survives `/reload`, compaction, and `/resume`. A `/new` session
-starts with `normal`, and forked sessions do not implicitly inherit the
-override. Session state stores model snapshots, not credentials.
+starts with the saved default team, and forked sessions do not implicitly
+inherit the override. Session state stores model snapshots, not credentials.
 
 Activation validates every unique target against Pi's exact model registry. A
 `localllm-*` target also receives a live connectivity and auth probe. Other
